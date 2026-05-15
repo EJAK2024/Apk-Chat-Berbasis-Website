@@ -93,22 +93,10 @@ class RoomController extends Controller
 
     // Ambil data room beserta messages
     public function show(Room $room)
-    {
-        $this->authorize('view', $room);
-
-        $messages = $room->messages()
-            ->with('user')
-            ->latest()
-            ->take(50)
-            ->get()
-            ->reverse();
-
-        $members = $room->users()->get();
-
-        return response()->json(compact(
-            'room',
-            'messages',
-            'members'
-        ));
-    }
+{
+    $this->authorize('view', $room);
+    $messages = $room->messages()->with('user')->oldest()->take(50)->get();
+    $members  = $room->users()->get();
+    return response()->json(compact('room', 'messages', 'members'));
+}
 }

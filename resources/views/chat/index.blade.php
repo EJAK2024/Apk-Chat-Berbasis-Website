@@ -242,4 +242,163 @@
     </div>
 
 </div>
+<script>
+function chatApp() {
+    return {
+        activeRoomId: null,
+        activeRoom: null,
+        messages: [],
+        members: [],
+        newMessage: '',
+        groupName: '',
+        showGroupModal: false,
+        showPrivateModal: false,
+        showAddMember: false,
+        pollingInterval: null,
+        rooms: JSON.parse('<?php echo addslashes(json_encode($rooms->map(fn($r) => [
+            "id" => $r->id,
+            "name" => $r->name,
+            "type" => $r->type,
+            "created_by" => $r->created_by,
+            "latest_message" => $r->latestMessage?->body ?? "Belum ada pesan",
+        ]))); ?>'),
+
+        init() {
+            console.log('ChatApp ready!');
+        },
+
+        async loadRoom(roomId) {
+            this.activeRoomId = roomId;
+            const res = await fetch('/rooms/' + roomId);
+            const data = await res.json();
+            this.activeRoom = data.room;
+            this.messages = data.messages;
+            this.members = data.members;
+            this.$nextTick(() => this.scrollToBottom());
+
+            if (window.ReverbPusher) {
+                window.ReverbPusher.unsubscribe('room.' + roomId);
+                const channel = window.ReverbPusher.subscribe('room.' + roomId);
+                console.log('Subscribed to channel: room.' + roomId);
+                channel.bind('App\\Events\\MessageSent', (data) => {
+                    console.log('MESSAGE RECEIVED:', data);
+                    const exists = this.messages.find(m => m.id === data.id);
+                    if (!exists) {
+                        this.messages.push(data);
+                        this.$nextTick(() => this.scrollToBottom());
+                    }
+                    this.updateSidebarPreview(data);
+                });
+            }
+        },
+
+        async sendMessage() {
+            if (!this.newMessage.trim() || !this.activeRoomId) return;
+            const res = await fetch('/rooms/' + this.activeRoomId + '/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                },
+                body: JSON.stringify({ body: this.newMessage }),
+            });
+            const message = await res.json();
+            this.messages.push(message);
+            this.newMessage = '';
+            this.updateSidebarPreview(message);
+            this.$nextTick(() => this.scrollToBottom());
+        },
+
+        async createGroup() {
+            if (!this.groupName.trim()) return;
+            await fetch('/rooms/group', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                },
+                body: JSON.stringify({ name: this.groupName }),
+            });
+            this.showGroupModal = false;
+            this.groupName = '';
+            window.location.reload();
+        },
+
+        async createPrivate(userId) {
+            await fetch('/rooms/private', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                },
+                body: JSON.stringify({ user_id: userId }),
+            });
+            this.showPrivateModal = false;
+            window.location.reload();
+        },
+
+        async addMember(userId) {
+            await fetch('/rooms/' + this.activeRoomId + '/members', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                },
+                body: JSON.stringify({ user_id: userId }),
+            });
+            this.showAddMember = false;
+            alert('Member berhasil ditambahkan!');
+        },
+
+        async deleteRoom(roomId) {
+            if (!confirm('Yakin ingin menghapus chat ini?')) return;
+            const res = await fetch('/rooms/' + roomId, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                this.activeRoomId = null;
+                this.activeRoom = null;
+                this.messages = [];
+                this.rooms = this.rooms.filter(r => r.id !== roomId);
+            } else {
+                alert(data.error || 'Gagal menghapus room');
+            }
+        },
+
+        updateSidebarPreview(message) {
+            const roomIndex = this.rooms.findIndex(r => r.id === this.activeRoomId);
+            if (roomIndex !== -1) {
+                this.rooms[roomIndex].latest_message = message.body;
+                const room = this.rooms.splice(roomIndex, 1)[0];
+                this.rooms.unshift(room);
+            }
+        },
+
+        scrollToBottom() {
+            const container = document.getElementById('messages-container');
+            if (container) container.scrollTop = container.scrollHeight;
+        },
+
+        formatTime(datetime) {
+            return new Date(datetime).toLocaleTimeString('id-ID', {
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+    }
+}
+</script>
+
+<script>
+window.addEventListener('alpine:init', () => {
+    Alpine.data('chatApp', chatApp);
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
 @endsection
