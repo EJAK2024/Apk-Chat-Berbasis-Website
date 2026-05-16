@@ -1,7 +1,6 @@
 @extends('layouts.app')
 @section('content')
-<div style="display:flex; height:100vh; width:100vw; position:fixed; top:0; left:0;" x-data="chatApp()" x-init="init()">
-
+<div style="display:flex; height:100vh; width:100vw; position:fixed; top:0; left:0;" x-data="chatApp" x-init="init()">
     {{-- SIDEBAR KIRI --}}
     <div class="w-80 bg-white border-r border-gray-200 flex flex-col shadow-sm">
         
@@ -105,13 +104,13 @@
                             💬
                         </div>
                         <div>
-                            <p class="font-bold text-gray-800" x-text="activeRoom?.name"></p>
+                            <p class="font-bold text-gray-800" x-text="activeRoom ? activeRoom.name : ''"></p>
                             <p class="text-xs text-gray-500">
                                 <span x-text="members.length"></span> anggota
                             </p>
                         </div>
                     </div>
-                    <template x-if="activeRoom?.type === 'group'">
+                    <template x-if="activeRoom && activeRoom.type === 'group'">
                         <button @click="showAddMember=true"
                             class="text-sm bg-blue-100 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-200 font-medium transition">
                             + Tambah Member
@@ -129,7 +128,7 @@
                                 {{-- Avatar --}}
                                 <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                                     :style="msg.user_id == {{ Auth::id() }} ? 'background:#3b82f6' : 'background:#6b7280'">
-                                    <span x-text="msg.user?.name?.charAt(0)?.toUpperCase()"></span>
+                                    <span x-text="msg.user ? msg.user.name.charAt(0).toUpperCase() : '?'"></span>
                                 </div>
 
                                 {{-- Bubble --}}
@@ -138,7 +137,7 @@
                                     : 'bg-white text-gray-800 border rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl shadow-sm'"
                                     class="px-4 py-3">
                                     <template x-if="msg.user_id != {{ Auth::id() }}">
-                                        <p class="text-xs font-semibold text-blue-500 mb-1" x-text="msg.user?.name"></p>
+                                      <p class="text-xs font-semibold text-blue-500 mb-1" x-text="msg.user ? msg.user.name : ''"></p>
                                     </template>
                                     <p class="text-sm leading-relaxed" x-text="msg.body"></p>
                                     <p class="text-xs mt-1 opacity-60 text-right" x-text="formatTime(msg.created_at)"></p>
@@ -242,6 +241,22 @@
     </div>
 
 </div>
+{{-- <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+<script>
+        window.Pusher = Pusher;  // Penting!
+
+        window.Echo = new Echo({
+            broadcaster: 'reverb',
+            key: '{{ env("REVERB_APP_KEY") }}',
+            wsHost: '{{ env("REVERB_HOST") }}',
+            wsPort: {{ env("REVERB_PORT") }},
+            wssPort: {{ env("REVERB_PORT") }},
+            forceTLS: false,
+            enabledTransports: ['ws', 'wss'],
+        });
+
+        console.log('✅ Echo + Reverb initialized');
+    </script> --}}
 <script>
 function chatApp() {
     return {
@@ -264,9 +279,9 @@ function chatApp() {
         ]))); ?>'),
 
         init() {
-            console.log('ChatApp ready!');
+            console.log('ChatApp initialized successfully!');
         },
-
+            
         async loadRoom(roomId) {
             this.activeRoomId = roomId;
             const res = await fetch('/rooms/' + roomId);
@@ -391,14 +406,12 @@ function chatApp() {
         }
     }
 }
-</script>
 
-<script>
-window.addEventListener('alpine:init', () => {
-    Alpine.data('chatApp', chatApp);
+document.addEventListener('alpine:init', () => {
+    Alpine.data('chatApp', () => chatApp());
 });
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script defer src="https://unpkg.com/alpinejs@3.13.0/dist/cdn.min.js"></script>
 
 @endsection

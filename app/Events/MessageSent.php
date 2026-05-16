@@ -12,6 +12,10 @@ class MessageSent implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
+    public function broadcastAs(): string
+    {
+    return 'message.sent'; // nama lebih simpel, hindari namespace issue
+    }
     public function __construct(public Message $message)
     {
         $this->message->load('user');
@@ -23,13 +27,15 @@ class MessageSent implements ShouldBroadcast
     ];
     }
     public function broadcastWith(): array
-    {
-        return [
-            'id' => $this->message->id,
-            'body' => $this->message->body,
-            'user' => $this->message->user,
-            'created_at' => $this->message->created_at->toDateTimeString(),
-        ];
-    }
+{
+    return [
+        'id'         => $this->message->id,
+        'body'       => $this->message->body,
+        'user_id'    => $this->message->user_id,  // ← tambah ini
+        'room_id'    => $this->message->room_id,  // ← tambah ini
+        'user'       => $this->message->user,
+        'created_at' => $this->message->created_at->toDateTimeString(),
+    ];
+}
 }
 

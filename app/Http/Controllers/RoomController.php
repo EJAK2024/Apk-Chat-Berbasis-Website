@@ -95,8 +95,18 @@ class RoomController extends Controller
     public function show(Room $room)
 {
     $this->authorize('view', $room);
-    $messages = $room->messages()->with('user')->oldest()->take(50)->get();
-    $members  = $room->users()->get();
+    
+    // Ambil 50 pesan TERBARU, lalu balik urutannya
+    $messages = $room->messages()
+        ->with('user')
+        ->latest()        // ← terbaru dulu
+        ->take(50)
+        ->get()
+        ->reverse()       // ← balik agar urutan lama→baru di UI
+        ->values();       // ← reset index array
+        
+    $members = $room->users()->get();
+    
     return response()->json(compact('room', 'messages', 'members'));
 }
 }
