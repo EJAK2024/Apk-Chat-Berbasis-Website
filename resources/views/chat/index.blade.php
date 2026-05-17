@@ -44,40 +44,38 @@
         </div>
 
         {{-- Daftar Room --}}
-        <div class="overflow-y-auto flex-1">
-            @forelse($rooms as $room)
-            <div @click="loadRoom({{ $room->id }})"
-                class="p-4 border-b cursor-pointer hover:bg-gray-50 transition"
-                :class="activeRoomId == {{ $room->id }} ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'border-l-4 border-l-transparent'">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                        style="background: {{ $room->type === 'group' ? '#6366f1' : '#10b981' }}">
-                        {{ $room->type === 'group' ? '👥' : '👤' }}
+<div class="overflow-y-auto flex-1">
+    <template x-if="rooms.length === 0">
+        <div class="p-6 text-center text-gray-400">
+            <p class="text-3xl mb-2">💬</p>
+            <p class="text-sm">Belum ada chat</p>
+            <p class="text-xs mt-1">Buat group atau mulai private chat</p>
+        </div>
+    </template>
+    <template x-for="room in rooms" :key="room.id">
+        <div @click="loadRoom(room.id)"
+            class="p-4 border-b cursor-pointer hover:bg-gray-50 transition"
+            :class="activeRoomId == room.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'border-l-4 border-l-transparent'">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                    :style="room.type === 'group' ? 'background:#6366f1' : 'background:#10b981'">
+                    <span x-text="room.type === 'group' ? '👥' : '👤'"></span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-center">
+                        <p class="font-semibold text-sm text-gray-800 truncate" x-text="room.name"></p>
+                        <span class="text-xs text-gray-400 ml-1" x-text="room.type === 'group' ? 'Group' : 'DM'"></span>
                     </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex justify-between items-center">
-                            <p class="font-semibold text-sm text-gray-800 truncate">{{ $room->name }}</p>
-                            <span class="text-xs text-gray-400 ml-1">
-                                {{ $room->type === 'group' ? 'Group' : 'DM' }}
-                            </span>
-                        </div>
-                        @if($room->latestMessage)
-                        <p class="text-xs text-gray-500 truncate mt-0.5">{{ $room->latestMessage->body }}</p>
-                        @else
-                        <p class="text-xs text-gray-400 italic mt-0.5">Belum ada pesan</p>
-                        @endif
+                    <div class="flex justify-between items-center mt-0.5">
+                        <p class="text-xs text-gray-500 truncate" x-text="room.latest_message || 'Belum ada pesan'"></p>
+                        <p class="text-xs text-gray-400 ml-1 flex-shrink-0" x-text="room.latest_time || ''"></p>
                     </div>
                 </div>
             </div>
-            @empty
-            <div class="p-6 text-center text-gray-400">
-                <p class="text-3xl mb-2">💬</p>
-                <p class="text-sm">Belum ada chat</p>
-                <p class="text-xs mt-1">Buat group atau mulai private chat</p>
-            </div>
-            @endforelse
         </div>
-    </div>
+    </template>
+</div>
+</div>
 
     {{-- AREA CHAT KANAN --}}
     <div class="flex-1 flex flex-col">
@@ -276,11 +274,35 @@ function chatApp() {
             "type" => $r->type,
             "created_by" => $r->created_by,
             "latest_message" => $r->latestMessage?->body ?? "Belum ada pesan",
+            "latest_time" => $r->latestMessage?->created_at?->format("H:i") ?? "",
         ]))); ?>'),
 
         init() {
-            console.log('ChatApp initialized successfully!');
-        },
+    console.log('ChatApp initialized successfully!');
+    
+    // Subscribe ke semua room untuk update sidebar
+    this.rooms.forEach(room => {
+        const channel = window.ReverbPusher.subscribe('room.' + room.id);
+        channel.bind('message.sent', (data) => {
+            // Update sidebar
+            const roomIndex = this.rooms.findIndex(r => r.id === data.room_id);
+            if (roomIndex !== -1) {
+                this.rooms[roomIndex].latest_message = data.body;
+                const r = this.rooms.splice(roomIndex, 1)[0];
+                this.rooms.unshift(r);
+            }
+            
+            // Kalau room sedang aktif, tambah pesan ke chat
+            if (this.activeRoomId === data.room_id) {
+                const exists = this.messages.find(m => m.id === data.id);
+                if (!exists) {
+                    this.messages.push(data);
+                    this.$nextTick(() => this.scrollToBottom());
+                }
+            }
+        });
+    });
+},
             
         async loadRoom(roomId) {
             this.activeRoomId = roomId;
@@ -295,7 +317,7 @@ function chatApp() {
                 window.ReverbPusher.unsubscribe('room.' + roomId);
                 const channel = window.ReverbPusher.subscribe('room.' + roomId);
                 console.log('Subscribed to channel: room.' + roomId);
-                channel.bind('App\\Events\\MessageSent', (data) => {
+                channel.bind('message.sent', (data) => {
                     console.log('MESSAGE RECEIVED:', data);
                     const exists = this.messages.find(m => m.id === data.id);
                     if (!exists) {
@@ -386,14 +408,15 @@ function chatApp() {
         },
 
         updateSidebarPreview(message) {
-            const roomIndex = this.rooms.findIndex(r => r.id === this.activeRoomId);
-            if (roomIndex !== -1) {
-                this.rooms[roomIndex].latest_message = message.body;
-                const room = this.rooms.splice(roomIndex, 1)[0];
-                this.rooms.unshift(room);
-            }
-        },
-
+            const roomId = message.room_id || this.activeRoomId;
+            const roomIndex = this.rooms.findIndex(r => r.id === roomId);
+    if (roomIndex !== -1) {
+        this.rooms[roomIndex].latest_message = message.body;
+        this.rooms[roomIndex].latest_time = message.created_at ? new Date(message.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : "";
+        const room = this.rooms.splice(roomIndex, 1)[0];
+        this.rooms.unshift(room);
+    }
+},
         scrollToBottom() {
             const container = document.getElementById('messages-container');
             if (container) container.scrollTop = container.scrollHeight;
